@@ -98,7 +98,7 @@ const 器物表 = [
 // ── 初始状态 ──
 const 新建 = () => ({
   灵气:10, 天地数量:Array(8).fill(0), 天地已购:Array(8).fill(0),
-  已解锁:4, 突破:0, 福地:0,
+  已解锁:1, 突破:0, 福地:0,
   道果:0, 已购道果:[], 转世次数:0,
   内炼中:-1, 灵液:0,
   // 器物：每个天地可装多个，数组的数组
@@ -189,7 +189,7 @@ const 模拟 = (s,dt) => {
 };
 
 // ── 存档 ──
-const SAVE="内景天地v4";
+const SAVE="内景天地v5";
 const 保存=s=>{try{localStorage.setItem(SAVE,JSON.stringify({...s,上次时间戳:Date.now()}))}catch(e){}};
 const 读取=()=>{try{
   const r=localStorage.getItem(SAVE);if(!r)return null;
@@ -227,6 +227,10 @@ function App(){
       setS(prev=>{
         const s={...prev,天地数量:[...prev.天地数量],游戏时间:prev.游戏时间+dt*1000,本轮时间:prev.本轮时间+dt*1000,上次时间戳:now};
         模拟(s,dt);
+        // 前4天地：买了第i个，第i+1个就显示出来
+        if(s.突破===0){
+          while(s.已解锁<4 && s.天地已购[s.已解锁-1]>=1) s.已解锁++;
+        }
         if(s.自动购买&&s.已购道果.includes(3)){
           s.天地已购=[...s.天地已购];const disc=算折扣(s);
           for(let i=s.已解锁-1;i>=0;i--){const r=买最大算(i,s.灵气,s.天地已购[i],disc);if(r.n>0){s.灵气=r.钱;s.天地数量[i]+=r.n;s.天地已购[i]=r.bought}}
@@ -413,7 +417,7 @@ function App(){
 
     {/* 标签 */}
     <div style={{position:"relative",zIndex:10,maxWidth:920,margin:"0 auto",padding:"10px 24px 0",display:"flex",gap:4}}>
-      {["天地","内炼","道果","统计",...(devMode?["开发"]:[])].map(t=><button key={t} onClick={()=>setTab(t)} style={{
+      {["天地",...(S.突破>0?["内炼"]:[]),"道果","统计",...(devMode?["开发"]:[])].map(t=><button key={t} onClick={()=>setTab(t)} style={{
         padding:"6px 16px",borderRadius:"6px 6px 0 0",border:"none",
         background:tab===t?"rgba(160,140,100,.12)":"transparent",
         color:tab===t?(t==="开发"?"#cc8844":gold):"#3a3025",fontSize:12,fontWeight:600,
@@ -494,12 +498,6 @@ function App(){
                 <button onClick={()=>买最大(i)} disabled={!can} style={{flex:1,padding:"5px 0",borderRadius:4,border:"none",fontSize:9,fontWeight:600,background:can?`${t.色}45`:"rgba(20,18,14,.5)",color:can?"#fff":"#3a3025"}}>最大</button>
               </div>
             </div>})}
-
-          {S.已解锁<8&&(()=>{const t=天地表[S.已解锁];return<div style={{display:"grid",gridTemplateColumns:"100px 1fr 180px",alignItems:"center",gap:5,padding:"8px 10px",background:"rgba(10,8,6,.4)",borderRadius:6,border:"1px dashed rgba(100,80,60,.2)"}}>
-            <div><div style={{fontSize:12,fontWeight:700,color:"#2a2520"}}>{t.名}</div><div style={{fontSize:8,color:"#1a1815"}}>{t.述}</div></div>
-            <div style={{textAlign:"center"}}><span style={{fontSize:9,color:"#3a3025"}}>🔒 需要突破开辟</span></div>
-            <div style={{textAlign:"right"}}><span style={{fontSize:9,color:"#2a2520"}}>基础灵气 {F(基础价[S.已解锁])}</span></div>
-          </div>})()}
 
           {S.已购道果.includes(3)&&<div style={{marginTop:4}}><button onClick={()=>setS(s=>({...s,自动购买:!s.自动购买}))} style={{padding:"4px 12px",borderRadius:4,border:`1px solid ${S.自动购买?jade+"66":"#2a2520"}`,background:S.自动购买?`${jade}15`:"rgba(15,12,10,.4)",color:S.自动购买?jade:"#4a4030",fontSize:10}}>自动购买: {S.自动购买?"开":"关"}</button></div>}
 
@@ -665,7 +663,7 @@ function App(){
     </div>
 
     <div style={{position:"relative",zIndex:10,textAlign:"center",padding:"12px 0 16px",fontSize:9,color:"#6a5a45",borderTop:"1px solid rgba(160,140,100,.1)"}}>
-      内景天地 v4 · © 2026 yyc-aka · MIT License · 受 Antimatter Dimensions 启发
+      内景天地 v5 · © 2026 yyc-aka · MIT License · 受 Antimatter Dimensions 启发
     </div>
   </div>;
 }
