@@ -2,7 +2,7 @@
 
 > 身有小天地 · 修炼放置游戏
 
-## ▶ [点击开始游戏 / Play Now](https://yang1269135365-commits.github.io/neijing/)
+## ▶ [点击开始游戏 / Play Now](https://aka-918.github.io/neijing/)
 
 一款受 [Antimatter Dimensions](https://ivark.github.io/AntimatterDimensions/) 启发的中文增量放置游戏。以修仙内景为主题，在体内八方天地中运转灵气、淬炼突破、开辟福地，最终破碎虚空转世重修。
 
@@ -19,7 +19,6 @@
 - 纯前端单 HTML 文件，无需服务器
 - 自动存档 + 离线收益
 - 速通里程碑计时
-- 开发者调试面板（连点标题 5 次解锁）
 
 ---
 
@@ -39,4 +38,4 @@ Single HTML file · React 18 + Babel Standalone · Auto-save + offline progress
 
 ## License
 
-MIT © 2026 
+MIT © 2026 yyc-aka
