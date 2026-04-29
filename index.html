@@ -417,7 +417,7 @@ function App(){
 
     {/* 标签 */}
     <div style={{position:"relative",zIndex:10,maxWidth:920,margin:"0 auto",padding:"10px 24px 0",display:"flex",gap:4}}>
-      {["天地",...(S.突破>0?["内炼"]:[]),"道果","统计",...(devMode?["开发"]:[])].map(t=><button key={t} onClick={()=>setTab(t)} style={{
+      {["天地",...(S.突破>0?["内炼"]:[]),...(S.总灵气>=1e70||S.转世次数>0?["道果"]:[]),"统计",...(devMode?["开发"]:[])].map(t=><button key={t} onClick={()=>setTab(t)} style={{
         padding:"6px 16px",borderRadius:"6px 6px 0 0",border:"none",
         background:tab===t?"rgba(160,140,100,.12)":"transparent",
         color:tab===t?(t==="开发"?"#cc8844":gold):"#3a3025",fontSize:12,fontWeight:600,
