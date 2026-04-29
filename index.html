@@ -225,7 +225,7 @@ function App(){
     const id=setInterval(()=>{
       const now=Date.now(),dt=Math.min((now-lastT.current)/1000,2);lastT.current=now;if(dt<=0)return;
       setS(prev=>{
-        const s={...prev,天地数量:[...prev.天地数量],天地已购:[...prev.天地已购],游戏时间:prev.游戏时间+dt*1000,本轮时间:prev.本轮时间+dt*1000,上次时间戳:now};
+        const s={...prev,天地数量:[...prev.天地数量],天地已购:[...prev.天地已购],天地器物:(prev.天地器物||[]).map(a=>[...(a||[])]),游戏时间:prev.游戏时间+dt*1000,本轮时间:prev.本轮时间+dt*1000,上次时间戳:now};
         模拟(s,dt);
         // 前4天地：买了第i个，第i+1个就显示出来
         if(s.突破===0){
@@ -382,19 +382,19 @@ function App(){
         <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:9,color:"#7a6a50",letterSpacing:1}}>灵气</div>
-            <div style={{fontSize:24,fontWeight:700,fontFamily:mono,color:gold,textShadow:`0 0 15px rgba(200,168,96,.3)`,animation:"breathe 3s ease-in-out infinite"}}>{F(S.灵气)}</div>
-            <div style={{fontSize:9,color:"#5a4a38"}}>{每秒>0?F(每秒)+"/秒":"静候运转…"}</div>
+            <div style={{fontSize:24,fontWeight:700,fontFamily:mono,color:gold,textShadow:`0 0 15px rgba(200,168,96,.3)`,animation:"breathe 3s ease-in-out infinite"}} translate="no">{F(S.灵气)}</div>
+            <div style={{fontSize:9,color:"#5a4a38"}} translate="no">{每秒>0?F(每秒)+"/秒":"静候运转…"}</div>
           </div>
-          {(S.灵液>0||S.内炼中>=0)&&<div style={{textAlign:"right"}}>
+          {(S.灵液>0||S.内炼中>=0)&&<div style={{textAlign:"right"}} translate="no">
             <div style={{fontSize:9,color:"#5a7a6a",letterSpacing:1}}>灵液</div>
             <div style={{fontSize:18,fontWeight:700,fontFamily:mono,color:jade}}>{F(S.灵液)}</div>
             {灵液速>0&&<div style={{fontSize:9,color:"#4a6050"}}>+{F(灵液速)}/秒</div>}
           </div>}
-          {S.道果>0&&<div style={{textAlign:"right"}}>
+          {S.道果>0&&<div style={{textAlign:"right"}} translate="no">
             <div style={{fontSize:9,color:"#8a6a90",letterSpacing:1}}>道果</div>
             <div style={{fontSize:18,fontWeight:700,fontFamily:mono,color:"#c8a0d0"}}>{F(S.道果)}</div>
           </div>}
-          {S.洞天>0&&<div style={{textAlign:"right"}}>
+          {S.洞天>0&&<div style={{textAlign:"right"}} translate="no">
             <div style={{fontSize:9,color:"#6a7a5a",letterSpacing:1}}>洞天</div>
             <div style={{fontSize:16,fontWeight:700,fontFamily:mono,color:jade}}>{S.洞天}</div>
           </div>}
@@ -479,7 +479,7 @@ function App(){
                 <div style={{fontSize:12,fontWeight:700,color:t.色}}>{t.名}</div>
                 <div style={{fontSize:8,color:t.色+"88",marginTop:1}}>{t.述}</div>
               </div>
-              <div style={{textAlign:"center"}}>
+              <div style={{textAlign:"center"}} translate="no">
                 <div style={{fontSize:13,fontWeight:600,color:"#ddd4c4",fontFamily:mono}}>{F(S.天地数量[i])}</div>
                 {(()=>{
                   const done=S.天地已购[i]%10, tier=Math.floor(S.天地已购[i]/10);
@@ -491,8 +491,8 @@ function App(){
                   </div>;
                 })()}
               </div>
-              <div style={{textAlign:"center",fontSize:10,color:t.色,fontFamily:mono}}>×{F(mult)}</div>
-              <div style={{textAlign:"center",fontSize:10,color:can?"#c8b890":"#3a3025",fontFamily:mono}}>{F(price)}</div>
+              <div style={{textAlign:"center",fontSize:10,color:t.色,fontFamily:mono}} translate="no">×{F(mult)}</div>
+              <div style={{textAlign:"center",fontSize:10,color:can?"#c8b890":"#3a3025",fontFamily:mono}} translate="no">{F(price)}</div>
               <div style={{display:"flex",gap:2}}>
                 <button onClick={()=>购买(i)} disabled={!can} style={{flex:1,padding:"5px 0",borderRadius:4,border:"none",fontSize:9,fontWeight:600,background:can?`${t.色}30`:"rgba(20,18,14,.5)",color:can?"#ddd":"#3a3025"}}>+1</button>
                 <button onClick={()=>买最大(i)} disabled={!can} style={{flex:1,padding:"5px 0",borderRadius:4,border:"none",fontSize:9,fontWeight:600,background:can?`${t.色}45`:"rgba(20,18,14,.5)",color:can?"#fff":"#3a3025"}}>最大</button>
