@@ -73,11 +73,11 @@ const 道果升级表 = [
   {id:3,名:"心念自动",en:"Auto Intent",述:"解锁自动购买",enDesc:"Unlock auto-buy",价:3},
   {id:4,名:"大道共鸣",en:"Dao Resonance",述:"所有天地产量 ×5",enDesc:"All realm output ×5",价:5},
   {id:5,名:"轮回加持",en:"Cycle Blessing",述:"转世道果获取 ×2",enDesc:"Dao Fruit gain ×2",价:8},
-  {id:6,名:"福地天成",en:"Blessed Land",述:"每个福地额外 ×1.5 效果",enDesc:"Each Haven gives ×1.5 extra",价:12},
+  {id:6,名:"洞天福地",en:"Blessed Land",述:"每个洞天额外 ×1.5 效果",enDesc:"Each Haven gives ×1.5 extra",价:12},
   {id:7,名:"破境强化",en:"Break Boost",述:"突破倍率提升至 ×3",enDesc:"Breakthrough mult → ×3",价:20},
 ];
 
-// ── 灵液升级（内炼产出，突破保留，福地清除） ──
+// ── 灵液升级（内炼产出，突破保留，洞天清除） ──
 // （灵液用于制作器物，安装到天地获得被动效果）
 
 // ── 器物（内景设施）──
@@ -98,7 +98,7 @@ const 器物表 = [
 // ── 初始状态 ──
 const 新建 = () => ({
   灵气:10, 天地数量:Array(8).fill(0), 天地已购:Array(8).fill(0),
-  已解锁:1, 突破:0, 福地:0,
+  已解锁:1, 突破:0, 洞天:0,
   道果:0, 已购道果:[], 转世次数:0,
   内炼中:-1, 灵液:0,
   // 器物：每个天地可装多个，数组的数组
@@ -116,7 +116,7 @@ const 碑列表 = [
   "首购玄混沌","首购靛沧海","首购血穹苍","首购玄宇宙",
   "八天地全开","突破5","突破6","突破7","突破8",
   "首次内炼","首个器物",
-  "福地1","福地2","福地3",
+  "洞天1","洞天2","洞天3",
   "首次转世",
 ];
 
@@ -132,7 +132,7 @@ const 算突破倍 = s => {
   const e=Math.max(0,s.突破-4);
   return s.已购道果.includes(7)?Math.pow(3,e):Math.pow(2,e);
 };
-const 算福地倍 = s => Math.pow(s.已购道果.includes(6)?3:2,s.福地);
+const 算洞天倍 = s => Math.pow(s.已购道果.includes(6)?3:2,s.洞天);
 // 器物产量叠加（多个产量器物相乘）
 const 算器物倍 = (s,i) => {
   const arr = (s.天地器物||[])[i] || [];
@@ -140,14 +140,14 @@ const 算器物倍 = (s,i) => {
   arr.forEach(qid=>{const q=器物表.find(x=>x.id===qid);if(q&&q.效==="产量")m*=q.值});
   return m;
 };
-const 算天地倍 = (s,i) => Math.pow(2,Math.floor(s.天地已购[i]/10))*算突破倍(s)*算福地倍(s)*算全局(s)*算器物倍(s,i);
+const 算天地倍 = (s,i) => Math.pow(2,Math.floor(s.天地已购[i]/10))*算突破倍(s)*算洞天倍(s)*算全局(s)*算器物倍(s,i);
 
-// ── 突破/福地/转世需求 ──
+// ── 突破/洞天/转世需求 ──
 const 突破需求 = s => {
   if(s.突破<4){const hi=s.已解锁-1;return{idx:hi,需:20,述:`开辟${天地表[s.已解锁].名}`}}
   return{idx:7,需:20+(s.突破-4)*15,述:"献祭 → 全天地 ×2"};
 };
-const 福地需求 = s => ({idx:7,需:80+s.福地*60});
+const 洞天需求 = s => ({idx:7,需:80+s.洞天*60});
 
 // ── 转世（道果） ──
 const 算道果 = s => {
@@ -170,7 +170,7 @@ const 算灵液产速 = (s) => {
   let 额外 = 1;
   const arr = (s.天地器物||[])[i] || [];
   arr.forEach(qid=>{const q=器物表.find(x=>x.id===qid);if(q&&q.效==="炼速")额外*=q.值});
-  return Math.min(2.0, base * 天地加成 * 额外);
+  return Math.min(2.0 + s.洞天 * 1.5, base * 天地加成 * 额外);
 };
 
 // ── 生产 ──
@@ -225,14 +225,14 @@ function App(){
     const id=setInterval(()=>{
       const now=Date.now(),dt=Math.min((now-lastT.current)/1000,2);lastT.current=now;if(dt<=0)return;
       setS(prev=>{
-        const s={...prev,天地数量:[...prev.天地数量],游戏时间:prev.游戏时间+dt*1000,本轮时间:prev.本轮时间+dt*1000,上次时间戳:now};
+        const s={...prev,天地数量:[...prev.天地数量],天地已购:[...prev.天地已购],游戏时间:prev.游戏时间+dt*1000,本轮时间:prev.本轮时间+dt*1000,上次时间戳:now};
         模拟(s,dt);
         // 前4天地：买了第i个，第i+1个就显示出来
         if(s.突破===0){
           while(s.已解锁<4 && s.天地已购[s.已解锁-1]>=1) s.已解锁++;
         }
         if(s.自动购买&&s.已购道果.includes(3)){
-          s.天地已购=[...s.天地已购];const disc=算折扣(s);
+          const disc=算折扣(s);
           for(let i=s.已解锁-1;i>=0;i--){const r=买最大算(i,s.灵气,s.天地已购[i],disc);if(r.n>0){s.灵气=r.钱;s.天地数量[i]+=r.n;s.天地已购[i]=r.bought}}
         }
         return s;
@@ -287,13 +287,13 @@ function App(){
     if(s.已解锁>=8)记碑(s,"八天地全开");
     addLog(`⬆ 突破第${s.突破}重！${req.述}`);return s})},[addLog]);
 
-  const 做福地=useCallback(()=>{setS(prev=>{
-    const req=福地需求(prev);if(prev.天地数量[req.idx]<req.需)return prev;
-    const s={...prev,灵气:10,天地数量:Array(8).fill(0),天地已购:Array(8).fill(0),突破:0,已解锁:4,福地:prev.福地+1,总灵气:0,内炼中:-1,灵液:0,碑:{...prev.碑}};
+  const 做洞天=useCallback(()=>{setS(prev=>{
+    const req=洞天需求(prev);if(prev.天地数量[req.idx]<req.需)return prev;
+    const s={...prev,灵气:10,天地数量:Array(8).fill(0),天地已购:Array(8).fill(0),突破:0,已解锁:4,洞天:prev.洞天+1,总灵气:0,内炼中:-1,灵液:0,碑:{...prev.碑}};
     s.天地器物=Array.from({length:8},()=>[]);
     if(s.已购道果.includes(1))s.灵气=1e5;
-    记碑(s,`福地${s.福地}`);
-    addLog(`🏔 开辟第${s.福地}福地！`);return s})},[addLog]);
+    记碑(s,`洞天${s.洞天}`);
+    addLog(`🏔 开辟第${s.洞天}洞天！`);return s})},[addLog]);
 
   const 做转世=useCallback(()=>{const pts=算道果(ref.current);if(pts<=0)return;setS(prev=>{
     const s=新建();s.道果=prev.道果+pts;s.已购道果=[...prev.已购道果];s.转世次数=prev.转世次数+1;
@@ -346,7 +346,7 @@ function App(){
   const 每秒=S.天地数量[0]*算天地倍(S,0)*(S.内炼中===0?0.5:1);
   const disc=算折扣(S);
   const 道果pts=算道果(S);
-  const bR=突破需求(S),gR=福地需求(S);
+  const bR=突破需求(S),gR=洞天需求(S);
   const 可突=S.天地数量[bR.idx]>=bR.需;
   const 可洞=S.已解锁>=8&&S.天地数量[gR.idx]>=gR.需;
   const 灵液速=算灵液产速(S);
@@ -394,9 +394,9 @@ function App(){
             <div style={{fontSize:9,color:"#8a6a90",letterSpacing:1}}>道果</div>
             <div style={{fontSize:18,fontWeight:700,fontFamily:mono,color:"#c8a0d0"}}>{F(S.道果)}</div>
           </div>}
-          {S.福地>0&&<div style={{textAlign:"right"}}>
-            <div style={{fontSize:9,color:"#6a7a5a",letterSpacing:1}}>福地</div>
-            <div style={{fontSize:16,fontWeight:700,fontFamily:mono,color:jade}}>{S.福地}</div>
+          {S.洞天>0&&<div style={{textAlign:"right"}}>
+            <div style={{fontSize:9,color:"#6a7a5a",letterSpacing:1}}>洞天</div>
+            <div style={{fontSize:16,fontWeight:700,fontFamily:mono,color:jade}}>{S.洞天}</div>
           </div>}
         </div>
       </div>
@@ -437,8 +437,8 @@ function App(){
             let 目标名,当前,需要,色;
             if(S.已解锁<8){
               目标名=`下一突破：开辟${天地表[S.已解锁].名}`;当前=S.天地数量[bR.idx];需要=bR.需;色=gold;
-            }else if(S.福地<1){
-              目标名="首个福地";当前=S.天地数量[gR.idx];需要=gR.需;色=jade;
+            }else if(S.洞天<1){
+              目标名="首个洞天";当前=S.天地数量[gR.idx];需要=gR.需;色=jade;
             }else if(道果pts<=0){
               const logNow=S.总灵气>0?Math.log10(S.总灵气):0;
               目标名="转世";当前=logNow;需要=80;色="#c8a0d0";
@@ -501,7 +501,7 @@ function App(){
 
           {S.已购道果.includes(3)&&<div style={{marginTop:4}}><button onClick={()=>setS(s=>({...s,自动购买:!s.自动购买}))} style={{padding:"4px 12px",borderRadius:4,border:`1px solid ${S.自动购买?jade+"66":"#2a2520"}`,background:S.自动购买?`${jade}15`:"rgba(15,12,10,.4)",color:S.自动购买?jade:"#4a4030",fontSize:10}}>自动购买: {S.自动购买?"开":"关"}</button></div>}
 
-          {/* 突破 & 福地 */}
+          {/* 突破 & 洞天 */}
           <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
             <div style={{flex:1,minWidth:240,padding:10,borderRadius:6,background:"rgba(160,140,100,.06)",border:`1px solid ${可突?gold+"44":"rgba(60,50,35,.2)"}`}}>
               <div style={{fontSize:10,fontWeight:700,color:gold,marginBottom:3}}>突破 <span style={{fontWeight:400,color:"#5a4a38"}}>（第{S.突破}重）</span></div>
@@ -509,9 +509,9 @@ function App(){
               <button onClick={做突破} disabled={!可突} style={{padding:"5px 16px",borderRadius:4,border:"none",fontSize:10,fontWeight:600,background:可突?`linear-gradient(135deg,${gold},#a08040)`:"rgba(20,18,14,.4)",color:可突?"#fff":"#3a3025"}}>突破</button>
             </div>
             {S.已解锁>=8&&<div style={{flex:1,minWidth:240,padding:10,borderRadius:6,background:"rgba(120,160,100,.06)",border:`1px solid ${可洞?jade+"44":"rgba(40,60,35,.2)"}`}}>
-              <div style={{fontSize:10,fontWeight:700,color:jade,marginBottom:3}}>开辟福地 <span style={{fontWeight:400,color:"#4a5a40"}}>（{S.福地}处）</span></div>
+              <div style={{fontSize:10,fontWeight:700,color:jade,marginBottom:3}}>开辟洞天 <span style={{fontWeight:400,color:"#4a5a40"}}>（{S.洞天}处）</span></div>
               <div style={{fontSize:9,color:"#5a7050",marginBottom:4}}>需{gR.需}个玄宇宙 <span style={{color:可洞?"#8a8":"#3a4030"}}>[{F(S.天地数量[7])}/{gR.需}]</span></div>
-              <button onClick={做福地} disabled={!可洞} style={{padding:"5px 16px",borderRadius:4,border:"none",fontSize:10,fontWeight:600,background:可洞?`linear-gradient(135deg,${jade},#5a8040)`:"rgba(15,20,12,.4)",color:可洞?"#fff":"#3a3025"}}>开辟</button>
+              <button onClick={做洞天} disabled={!可洞} style={{padding:"5px 16px",borderRadius:4,border:"none",fontSize:10,fontWeight:600,background:可洞?`linear-gradient(135deg,${jade},#5a8040)`:"rgba(15,20,12,.4)",color:可洞?"#fff":"#3a3025"}}>开辟</button>
             </div>}
           </div>
 
@@ -557,7 +557,7 @@ function App(){
                 <div style={{fontSize:10,fontWeight:700,color:选中?q.色:q.色+"cc"}}>{选中?"◆ ":""}{q.名}</div>
                 <div style={{fontSize:8,color:"#6a5a48",marginTop:2,lineHeight:1.3}}>{q.述}</div>
                 <div style={{fontSize:8,color:q.色+"cc",marginTop:3,fontWeight:600,borderTop:`1px solid ${q.色}15`,paddingTop:3}}>{q.详}</div>
-                <div style={{fontSize:7,color:"#4a4030",marginTop:2}}>基础 {q.价} 灵液 · 每多一个 ×4</div>
+                <div style={{fontSize:7,color:S.灵液>=算器物价(q.id,S)?"#6a5a45":"#3a3025",marginTop:2,fontFamily:mono}}>当前售价 {F(算器物价(q.id,S))} 灵液</div>
               </button>})}
           </div>
 
@@ -621,7 +621,7 @@ function App(){
         {/* ══ 统计 ══ */}
         {tab==="统计"&&<div style={{animation:"slideIn .3s ease"}}>
           <div style={{fontSize:14,fontWeight:700,color:gold,marginBottom:12}}>修行录</div>
-          {[["当前灵气",F(S.灵气)],["每秒灵气",F(每秒)],["累计灵气",F(S.总灵气)],["已开天地",S.已解锁+"/8"],["突破",S.突破+"重"],["福地",S.福地+"处"],["灵液",F(S.灵液)],["灵液产速",灵液速>0?"+"+F(灵液速)+"/秒":"—"],["内炼",S.内炼中>=0?天地表[S.内炼中].名:"未开启"],["器物",(S.天地器物||[]).reduce((a,b)=>a+(b||[]).length,0)+"个"],["转世",S.转世次数+"次"],["道果",F(S.道果)],["开发者倍率","×"+F(S.开发者倍率||1)],["本轮",fT(S.本轮时间)],["总时间",fT(S.游戏时间)]].map(([k,v],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 12px",borderBottom:"1px solid rgba(160,140,100,.06)",fontSize:11}}><span style={{color:"#7a6a50"}}>{k}</span><span style={{color:"#c8c0b0",fontFamily:mono}}>{v}</span></div>)}
+          {[["当前灵气",F(S.灵气)],["每秒灵气",F(每秒)],["累计灵气",F(S.总灵气)],["已开天地",S.已解锁+"/8"],["突破",S.突破+"重"],["洞天",S.洞天+"处"],["灵液",F(S.灵液)],["灵液产速",灵液速>0?"+"+F(灵液速)+"/秒":"—"],["内炼",S.内炼中>=0?天地表[S.内炼中].名:"未开启"],["器物",(S.天地器物||[]).reduce((a,b)=>a+(b||[]).length,0)+"个"],["转世",S.转世次数+"次"],["道果",F(S.道果)],["开发者倍率","×"+F(S.开发者倍率||1)],["本轮",fT(S.本轮时间)],["总时间",fT(S.游戏时间)]].map(([k,v],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 12px",borderBottom:"1px solid rgba(160,140,100,.06)",fontSize:11}}><span style={{color:"#7a6a50"}}>{k}</span><span style={{color:"#c8c0b0",fontFamily:mono}}>{v}</span></div>)}
           <div style={{marginTop:14,display:"flex",gap:6}}>
             <button onClick={()=>{保存(ref.current);addLog("💾 已存档")}} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2a2518",background:"rgba(20,18,12,.4)",color:"#7a6a50",fontSize:10}}>存档</button>
             <button onClick={重置} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2a1810",background:"rgba(30,15,10,.3)",color:"#8a5040",fontSize:10}}>删档</button>
@@ -635,19 +635,19 @@ function App(){
           <DevSec title="灵液">{[10,50,200,1000].map(n=><DevBtn key={n} label={`+${n}`} color={jade} onClick={()=>setS(s=>({...s,灵液:s.灵液+n}))}/>)}<DevBtn label="归零" color="#aa5040" onClick={()=>setS(s=>({...s,灵液:0}))}/></DevSec>
           <DevSec title="道果">{[1,5,10,50,100].map(n=><DevBtn key={n} label={`+${n}`} color="#c0a0d0" onClick={()=>setS(s=>({...s,道果:s.道果+n}))}/>)}<DevBtn label="归零" color="#aa5040" onClick={()=>setS(s=>({...s,道果:0}))}/></DevSec>
           <DevSec title={`全局倍率 ×${F(S.开发者倍率||1)}`}>{[2,10,100,1e6].map(n=><DevBtn key={n} label={`×${F(n)}`} color="#c8a860" onClick={()=>setS(s=>({...s,开发者倍率:(s.开发者倍率||1)*n}))}/>)}{[2,10].map(n=><DevBtn key={-n} label={`÷${n}`} color="#a0a060" onClick={()=>setS(s=>({...s,开发者倍率:Math.max(1,(s.开发者倍率||1)/n)}))}/>)}<DevBtn label="×1" color="#aa5040" onClick={()=>setS(s=>({...s,开发者倍率:1}))}/></DevSec>
-          <DevSec title="突破/福地">
+          <DevSec title="突破/洞天">
             <DevBtn label="突破+1" color={gold} onClick={()=>setS(s=>{const n={...s,突破:s.突破+1};n.已解锁=Math.min(8,4+n.突破);return n})}/>
             <DevBtn label="突破+5" color={gold} onClick={()=>setS(s=>{const n={...s,突破:s.突破+5};n.已解锁=Math.min(8,4+n.突破);return n})}/>
-            <DevBtn label="福地+1" color={jade} onClick={()=>setS(s=>({...s,福地:s.福地+1}))}/>
-            <DevBtn label="福地+5" color={jade} onClick={()=>setS(s=>({...s,福地:s.福地+5}))}/>
+            <DevBtn label="洞天+1" color={jade} onClick={()=>setS(s=>({...s,洞天:s.洞天+1}))}/>
+            <DevBtn label="洞天+5" color={jade} onClick={()=>setS(s=>({...s,洞天:s.洞天+5}))}/>
           </DevSec>
           <DevSec title="升级"><DevBtn label="道果全解" color="#8c8" onClick={()=>setS(s=>({...s,已购道果:道果升级表.map(u=>u.id)}))}/><DevBtn label="道果全清" color="#aa5040" onClick={()=>setS(s=>({...s,已购道果:[]}))}/></DevSec>
           <DevSec title="天地数量">{Array.from({length:8},(_,i)=><DevBtn key={i} label={`${天地表[i].名}+100`} color="#a09070" onClick={()=>setS(s=>{const d=[...s.天地数量];d[i]+=100;return{...s,天地数量:d}})}/>)}<DevBtn label="全+1000" color="#a09070" onClick={()=>setS(s=>({...s,天地数量:s.天地数量.map(d=>d+1000)}))}/></DevSec>
           <DevSec title="快速跳转">
             <DevBtn label="→ 初始" color="#888" onClick={()=>{setS(新建());addLog("🔧 重置")}}/>
             <DevBtn label="→ 首次突破前" color="#888" onClick={()=>{const s=新建();s.灵气=1e6;s.天地数量=[20,5,0,0,0,0,0,0];s.天地已购=[20,5,0,0,0,0,0,0];setS(s)}}/>
-            <DevBtn label="→ 首个福地前" color="#888" onClick={()=>{const s=新建();s.灵气=1e24;s.已解锁=8;s.突破=6;s.天地数量=[100,80,60,40,30,20,10,50];s.天地已购=s.天地数量.map(x=>x);setS(s)}}/>
-            <DevBtn label="→ 转世前" color="#888" onClick={()=>{const s=新建();s.灵气=1e80;s.总灵气=1e80;s.已解锁=8;s.突破=10;s.福地=5;s.天地数量=Array(8).fill(200);s.天地已购=Array(8).fill(200);setS(s)}}/>
+            <DevBtn label="→ 首个洞天前" color="#888" onClick={()=>{const s=新建();s.灵气=1e24;s.已解锁=8;s.突破=6;s.天地数量=[100,80,60,40,30,20,10,50];s.天地已购=s.天地数量.map(x=>x);setS(s)}}/>
+            <DevBtn label="→ 转世前" color="#888" onClick={()=>{const s=新建();s.灵气=1e80;s.总灵气=1e80;s.已解锁=8;s.突破=10;s.洞天=5;s.天地数量=Array(8).fill(200);s.天地已购=Array(8).fill(200);setS(s)}}/>
           </DevSec>
         </div>}
 
