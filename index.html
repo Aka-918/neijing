@@ -57,7 +57,10 @@ const 天地表 = [
 const 基础价 = [10,100,1e4,1e6,1e9,1e13,1e18,1e24];
 const 算价 = (i,bought,disc=1) => {
   const tier=Math.floor(bought/10),c=Math.floor(tier/3),r=tier%3;
-  return 基础价[i]*Math.pow(10,c*9+[0,3,7][r])/disc;
+  let price = 基础价[i]*Math.pow(10,c*9+[0,3,7][r]);
+  // 100次后价格加速：每多买10个，额外×10^(超出/10)
+  if(bought>100) price *= Math.pow(10, (bought-100)*0.15);
+  return price/disc;
 };
 const 买最大算 = (i,钱,bought,disc) => {
   let p=钱,b=bought,n=0;
@@ -65,17 +68,48 @@ const 买最大算 = (i,钱,bought,disc) => {
   return{钱:p,bought:b,n};
 };
 
-// ── 道果（转世）升级 ──
-const 道果升级表 = [
-  {id:0,名:"灵根淬炼",en:"Root Tempering",述:"所有天地产量 ×2",enDesc:"All realm output ×2",价:1},
-  {id:1,名:"宿慧残留",en:"Past Wisdom",述:"转世后初始 1e5 灵气",enDesc:"Start with 1e5 Qi after rebirth",价:1},
-  {id:2,名:"天材地宝",en:"Rare Materials",述:"所有天地价格 ÷10",enDesc:"All realm costs ÷10",价:2},
-  {id:3,名:"心念自动",en:"Auto Intent",述:"解锁自动购买",enDesc:"Unlock auto-buy",价:3},
-  {id:4,名:"大道共鸣",en:"Dao Resonance",述:"所有天地产量 ×5",enDesc:"All realm output ×5",价:5},
-  {id:5,名:"轮回加持",en:"Cycle Blessing",述:"转世道果获取 ×2",enDesc:"Dao Fruit gain ×2",价:8},
-  {id:6,名:"洞天福地",en:"Blessed Land",述:"每个洞天额外 ×1.5 效果",enDesc:"Each Haven gives ×1.5 extra",价:12},
-  {id:7,名:"破境强化",en:"Break Boost",述:"突破倍率提升至 ×3",enDesc:"Breakthrough mult → ×3",价:20},
+// ── 道果天赋树 ──
+// 行:渲染行, 列:0=左 1=中 2=右, 前置:需要哪些节点(OR关系), 效:效果类型
+const 道果树 = [
+  {id:11,名:"灵根淬炼",述:"全天地产量 ×2",行:0,列:1,前置:[],价:1,效:"产倍",值:2},
+  {id:12,名:"根基稳固",述:"突破需求 -3",行:1,列:1,前置:[11],价:1,效:"突减",值:3},
+  // ── 第一分叉：天地流 vs 内炼流 ──
+  {id:21,名:"天道运行",述:"全天地产量 ×3",行:2,列:0,前置:[12],价:2,效:"产倍",值:3},
+  {id:22,名:"灵液涌泉",述:"灵液产出 ×2",行:2,列:2,前置:[12],价:2,效:"液倍",值:2},
+  {id:31,名:"破境如意",述:"突破倍率翻倍",行:3,列:0,前置:[21],价:2,效:"突强",值:2},
+  {id:32,名:"器灵亲和",述:"器物价格 ÷2",行:3,列:2,前置:[22],价:2,效:"器折",值:2},
+  {id:41,名:"灵气充盈",述:"天地价格 ÷5",行:4,列:0,前置:[31],价:3,效:"价折",值:5},
+  {id:42,名:"匠心独运",述:"器物效果 ×1.5",行:4,列:2,前置:[32],价:3,效:"器强",值:1.5},
+  // ── 汇合 ──
+  {id:51,名:"洞天共鸣",述:"洞天灵液加成 ×2",行:5,列:1,前置:[41,42],价:3,效:"洞强",值:2},
+  {id:52,名:"大道共鸣",述:"全天地产量 ×5",行:6,列:1,前置:[51],价:3,效:"产倍",值:5},
+  // ── 第二分叉：爆发流 vs 持久流 ──
+  {id:61,名:"虚空爆发",述:"产量 ×10 · 灵液产出减半",行:7,列:0,前置:[52],价:4,效:"爆发",值:10},
+  {id:62,名:"细水长流",述:"灵液上限 ×3 · 产量 ×2",行:7,列:2,前置:[52],价:4,效:"持久",值:3},
+  {id:71,名:"不动如山",述:"突破时保留 30% 天地数量",行:8,列:0,前置:[61],价:5,效:"突留",值:0.3},
+  {id:72,名:"器道长存",述:"突破时每天地保留 1 个器物",行:8,列:2,前置:[62],价:5,效:"器留",值:1},
+  // ── 汇合 ──
+  {id:81,名:"轮回加持",述:"道果获取 ×2",行:9,列:1,前置:[71,72],价:5,效:"果倍",值:2},
+  {id:91,名:"内景圆满",述:"后续将在未来揭示…",行:10,列:1,前置:[81],价:1,效:"圆满",值:1},
 ];
+// 前置逻辑：同行的多个前置为OR关系（有一个就行）
+const 可购树节点 = (id,已购) => {
+  const n=道果树.find(x=>x.id===id);if(!n)return false;
+  if(已购.includes(id))return false;
+  if(n.前置.length===0)return true;
+  // 同行前置OR，不同行前置AND
+  // 简化：前置列表中有任一已购即可
+  return n.前置.some(p=>已购.includes(p));
+};
+// 树字符串：用逗号分隔已购ID
+const 树转字符串 = (已购) => 已购.sort((a,b)=>a-b).join(",");
+const 字符串转树 = (str) => {
+  if(!str||!str.trim())return[];
+  return str.split(",").map(Number).filter(n=>道果树.some(x=>x.id===n));
+};
+
+// 兼容旧存档
+const 道果升级表 = 道果树; // alias
 
 // ── 灵液升级（内炼产出，突破保留，洞天清除） ──
 // （灵液用于制作器物，安装到天地获得被动效果）
@@ -120,57 +154,82 @@ const 碑列表 = [
   "首次转世",
 ];
 
-// ── 倍率计算 ──
+// ── 倍率计算（读取道果树效果） ──
+const 树效 = (s,效类) => {
+  let v=1;
+  (s.已购道果||[]).forEach(id=>{const n=道果树.find(x=>x.id===id);if(n&&n.效===效类)v*=n.值});
+  return v;
+};
+const 树有 = (s,效类) => (s.已购道果||[]).some(id=>{const n=道果树.find(x=>x.id===id);return n&&n.效===效类});
+
 const 算全局 = s => {
   let m = s.开发者倍率||1;
-  if(s.已购道果.includes(0)) m*=2;
-  if(s.已购道果.includes(4)) m*=5;
+  m *= 树效(s,"产倍"); // 11(×2), 21(×3), 52(×5) 相乘
+  if(树有(s,"爆发")) m *= 10;  // 61: 产量×10
+  if(树有(s,"持久")) m *= 2;   // 62: 产量×2
   return m;
 };
-const 算折扣 = s => {let d=1;if(s.已购道果.includes(2))d*=10;return d};
+const 算折扣 = s => {
+  let d = 树效(s,"价折"); // 41: ÷5
+  return d;
+};
 const 算突破倍 = s => {
   const e=Math.max(0,s.突破-4);
-  return s.已购道果.includes(7)?Math.pow(3,e):Math.pow(2,e);
+  const base = 2 * 树效(s,"突强"); // 31: 突破倍率翻倍→base×2=4
+  return Math.pow(base,e);
 };
-const 算洞天倍 = s => Math.pow(s.已购道果.includes(6)?3:2,s.洞天);
-// 器物产量叠加（多个产量器物相乘）
+const 算洞天倍 = s => {
+  const 洞强 = 树效(s,"洞强");
+  return Math.pow(1.5 * 洞强, s.洞天);
+};
+const 算洞天液倍 = s => Math.pow(3 * 树效(s,"洞强"), s.洞天);
+const 算洞天液基 = s => s.洞天 * 0.2 * 树效(s,"洞强");
+// 器物产量叠加
 const 算器物倍 = (s,i) => {
   const arr = (s.天地器物||[])[i] || [];
   let m = 1;
-  arr.forEach(qid=>{const q=器物表.find(x=>x.id===qid);if(q&&q.效==="产量")m*=q.值});
+  const 器强 = 树效(s,"器强"); // 42: ×1.5
+  arr.forEach(qid=>{const q=器物表.find(x=>x.id===qid);if(q&&q.效==="产量")m*=q.值*器强});
   return m;
 };
 const 算天地倍 = (s,i) => Math.pow(2,Math.floor(s.天地已购[i]/10))*算突破倍(s)*算洞天倍(s)*算全局(s)*算器物倍(s,i);
 
-// ── 突破/洞天/转世需求 ──
+// ── 突破需求 ──
 const 突破需求 = s => {
-  if(s.突破<4){const hi=s.已解锁-1;return{idx:hi,需:20,述:`开辟${天地表[s.已解锁].名}`}}
-  return{idx:7,需:20+(s.突破-4)*15,述:"献祭 → 全天地 ×2"};
+  let 减 = 0;
+  if(树有(s,"突减")){const n=道果树.find(x=>x.效==="突减");if(n)减=n.值}
+  if(s.突破<4){const hi=s.已解锁-1;return{idx:hi,需:Math.max(1,20-减),述:`开辟${天地表[s.已解锁].名}`}}
+  return{idx:7,需:Math.max(1,20+(s.突破-4)*15-减),述:"献祭 → 全天地 ×2"};
 };
 const 洞天需求 = s => ({idx:7,需:80+s.洞天*60});
 
 // ── 转世（道果） ──
 const 算道果 = s => {
   if(s.总灵气<1e80) return 0;
-  const raw = Math.sqrt(Math.log10(s.总灵气)-80);
-  let pts = Math.floor(raw);
-  if(s.已购道果.includes(5)) pts*=2;
+  let pts = Math.max(1, Math.floor((Math.log10(s.总灵气) - 80) / 6));
+  pts *= 树效(s,"果倍");
   return pts;
 };
 
-// ── 灵液产出（提高4倍，封顶2/秒）──
+// ── 灵液产出 ──
 const 算灵液产速 = (s) => {
   if(s.内炼中<0) return 0;
   const i=s.内炼中;
   const 产量 = s.天地数量[i] * 算天地倍(s,i) * 0.5;
   const raw = Math.min(30, Math.max(0, Math.log10(Math.max(1,产量))));
-  const base = raw * raw * 0.001; // 4x of old 0.00025
+  const base = raw * raw * 0.001;
   const 天地加成 = 1 + i * 0.2;
+  let 额外 = 树效(s,"液倍") * 算洞天液倍(s);
+  const 洞天基 = 算洞天液基(s); // 每洞天+0.2基础速度
   // 星砂器物叠加
-  let 额外 = 1;
   const arr = (s.天地器物||[])[i] || [];
   arr.forEach(qid=>{const q=器物表.find(x=>x.id===qid);if(q&&q.效==="炼速")额外*=q.值});
-  return Math.min(2.0 + s.洞天 * 1.5, base * 天地加成 * 额外);
+  // 爆发流惩罚
+  if(树有(s,"爆发")) 额外 *= 0.5;
+  // 灵液上限：基础2 + 洞天×1.5，持久流×3
+  let cap = 2.0 + s.洞天 * 1.5;
+  if(树有(s,"持久")) cap *= 3;
+  return Math.min(cap, base * 天地加成 * 额外 + 洞天基);
 };
 
 // ── 生产 ──
@@ -182,14 +241,14 @@ const 模拟 = (s,dt) => {
   }
   if(s.天地数量[0]>0){
     const 税率 = (s.内炼中===0) ? 0.5 : 1;
-    const p=s.天地数量[0]*算天地倍(s,0)*dt;
-    s.灵气+=p*税率; s.总灵气+=p;
+    const p=s.天地数量[0]*算天地倍(s,0)*dt*税率;
+    s.灵气+=p; s.总灵气+=p;
   }
   if(s.内炼中>=0) s.灵液 += 算灵液产速(s) * dt;
 };
 
 // ── 存档 ──
-const SAVE="内景天地v5";
+const SAVE="内景天地v6";
 const 保存=s=>{try{localStorage.setItem(SAVE,JSON.stringify({...s,上次时间戳:Date.now()}))}catch(e){}};
 const 读取=()=>{try{
   const r=localStorage.getItem(SAVE);if(!r)return null;
@@ -231,7 +290,7 @@ function App(){
         if(s.突破===0){
           while(s.已解锁<4 && s.天地已购[s.已解锁-1]>=1) s.已解锁++;
         }
-        if(s.自动购买&&s.已购道果.includes(3)){
+        if(s.自动购买&&s.转世次数>0){
           const disc=算折扣(s);
           for(let i=s.已解锁-1;i>=0;i--){const r=买最大算(i,s.灵气,s.天地已购[i],disc);if(r.n>0){s.灵气=r.钱;s.天地数量[i]+=r.n;s.天地已购[i]=r.bought}}
         }
@@ -275,14 +334,24 @@ function App(){
   const 做突破=useCallback(()=>{setS(prev=>{
     const req=突破需求(prev);if(prev.天地数量[req.idx]<req.需)return prev;
     const s={...prev,灵气:10,天地数量:[...Array(8).fill(0)],天地已购:Array(8).fill(0),突破:prev.突破+1,总灵气:0,内炼中:-1,碑:{...prev.碑}};
-    s.天地器物=Array.from({length:8},()=>[]);
-    // 护持器物：保留部分数量
+    // 器物处理
+    if(树有(prev,"器留")){
+      // 每天地保留1个器物
+      s.天地器物=(prev.天地器物||Array.from({length:8},()=>[])).map(arr=>arr.length>0?[arr[0]]:[]);
+    }else{
+      s.天地器物=Array.from({length:8},()=>[]);
+    }
+    // 突留：保留30%数量（在器物清除前算）
+    if(树有(prev,"突留")){
+      for(let i=0;i<8;i++) s.天地数量[i]=prev.天地数量[i]*0.3;
+    }
+    // 旧的护持器物逻辑也保留
     for(let i=0;i<8;i++){
       const arr=(prev.天地器物||[])[i]||[];
       arr.forEach(qid=>{const q=器物表.find(x=>x.id===qid);if(q&&q.效==="护持")s.天地数量[i]+=prev.天地数量[i]*q.值});
     }
     if(s.突破<=4)s.已解锁=4+s.突破;
-    if(s.已购道果.includes(1))s.灵气=1e5;
+    
     记碑(s,`突破${s.突破}`);
     if(s.已解锁>=8)记碑(s,"八天地全开");
     addLog(`⬆ 突破第${s.突破}重！${req.述}`);return s})},[addLog]);
@@ -291,18 +360,74 @@ function App(){
     const req=洞天需求(prev);if(prev.天地数量[req.idx]<req.需)return prev;
     const s={...prev,灵气:10,天地数量:Array(8).fill(0),天地已购:Array(8).fill(0),突破:0,已解锁:4,洞天:prev.洞天+1,总灵气:0,内炼中:-1,灵液:0,碑:{...prev.碑}};
     s.天地器物=Array.from({length:8},()=>[]);
-    if(s.已购道果.includes(1))s.灵气=1e5;
+    
     记碑(s,`洞天${s.洞天}`);
     addLog(`🏔 开辟第${s.洞天}洞天！`);return s})},[addLog]);
+
+  const [洗点标记,设洗点标记]=useState(false);
 
   const 做转世=useCallback(()=>{const pts=算道果(ref.current);if(pts<=0)return;setS(prev=>{
     const s=新建();s.道果=prev.道果+pts;s.已购道果=[...prev.已购道果];s.转世次数=prev.转世次数+1;
     s.游戏时间=prev.游戏时间;s.开发者倍率=prev.开发者倍率;s.碑={...prev.碑};
     记碑(s,"首次转世");
-    if(s.已购道果.includes(1))s.灵气=1e5;return s});
-    addLog(`⟡ 转世！获得 ${F(算道果(ref.current))} 道果`)},[addLog]);
+    // 洗点：转世时退还道果清空树
+    if(洗点标记){
+      const 退还=(s.已购道果||[]).reduce((sum,id)=>{const n=道果树.find(x=>x.id===id);return sum+(n?n.价:0)},0);
+      s.道果+=退还;s.已购道果=[];
+      设洗点标记(false);
+    }
+    return s});
+    addLog(洗点标记?`⟡ 转世！+${F(算道果(ref.current))} 道果（已洗点）`:`⟡ 转世！+${F(算道果(ref.current))} 道果`)},[addLog,洗点标记]);
 
-  const 购道果=useCallback(u=>{setS(prev=>{if(prev.已购道果.includes(u.id)||prev.道果<u.价)return prev;return{...prev,道果:prev.道果-u.价,已购道果:[...prev.已购道果,u.id]}});addLog(`★ 感悟：${u.名}`)},[addLog]);
+  const 购树节点=useCallback(id=>{setS(prev=>{
+    const n=道果树.find(x=>x.id===id);
+    if(!n||!可购树节点(id,prev.已购道果)||prev.道果<n.价)return prev;
+    const s={...prev,道果:prev.道果-n.价,已购道果:[...prev.已购道果,id]};
+    if(n.效==="圆满") addLog("✦✦✦ 内景圆满…后续将在未来揭示 ✦✦✦");
+    else addLog(`★ 感悟：${n.名}`);
+    return s;
+  })},[addLog]);
+
+  const 洗点=useCallback(()=>{
+    设弹窗({文字:"洗点将触发转世重置，所有天地、突破、洞天、灵液归零，道果退还。确定？",确认:()=>{
+      setS(prev=>{
+        const 退还=(prev.已购道果||[]).reduce((sum,id)=>{const n=道果树.find(x=>x.id===id);return sum+(n?n.价:0)},0);
+        const s=新建();
+        s.道果=prev.道果+退还;
+        s.已购道果=[];
+        s.转世次数=prev.转世次数;
+        s.游戏时间=prev.游戏时间;
+        s.开发者倍率=prev.开发者倍率;
+        s.碑={...prev.碑};
+        return s;
+      });
+      addLog("洗点完成，已转世重置，道果已退还");
+      设弹窗(null);
+    }});
+  },[addLog]);
+
+  const 复制树=useCallback(()=>{
+    const str=树转字符串(S.已购道果||[]);
+    navigator.clipboard?.writeText(str).then(()=>addLog("已复制天赋树："+str)).catch(()=>addLog("复制失败"));
+  },[S.已购道果,addLog]);
+
+  const 粘贴树=useCallback(()=>{
+    const str=prompt("粘贴天赋树字符串：");
+    if(!str)return;
+    const ids=字符串转树(str);
+    const 已购=[];
+    for(const id of ids.sort((a,b)=>a-b)){
+      if(!可购树节点(id,已购))continue;
+      已购.push(id);
+    }
+    const 总价=已购.reduce((s,id)=>{const n=道果树.find(x=>x.id===id);return s+(n?n.价:0)},0);
+    setS(prev=>{
+      const 可用=prev.道果+(prev.已购道果||[]).reduce((s,id)=>{const n=道果树.find(x=>x.id===id);return s+(n?n.价:0)},0);
+      if(总价>可用){addLog("道果不足，无法应用");return prev}
+      return{...prev,道果:可用-总价,已购道果:已购};
+    });
+    addLog("已应用天赋树");
+  },[addLog]);
 
   const 切内炼=useCallback(i=>{setS(prev=>{
     if(prev.内炼中===i) return{...prev,内炼中:-1};
@@ -340,7 +465,7 @@ function App(){
     addLog(`拆除 ${天地表[天地idx].名} 的器物`);
   },[addLog]);
 
-  const 重置=useCallback(()=>{if(confirm("确定删除存档？")){localStorage.removeItem(SAVE);prevU.current=4;setS(新建());setLog(["存档已重置。"])}},[]);
+  const 重置=useCallback(()=>{设弹窗({文字:"确定删除存档？所有进度将永久丢失。",确认:()=>{localStorage.removeItem(SAVE);prevU.current=1;setS(新建());setLog(["存档已重置。"]);设弹窗(null)}})},[]);
 
   // ── 派生 ──
   const 每秒=S.天地数量[0]*算天地倍(S,0)*(S.内炼中===0?0.5:1);
@@ -353,6 +478,7 @@ function App(){
   const fT=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);return h>0?h+"时"+m%60+"分":m>0?m+"分"+s%60+"秒":s+"秒"};
   const [选中器物,设选中器物]=useState(-1);
   const 碑=(S.碑||{});
+  const [弹窗,设弹窗]=useState(null);
   // 语言切换
   const [en,setEn]=useState(false);
   const L=(cn,eng)=>en?eng:cn;
@@ -397,6 +523,7 @@ function App(){
           {S.洞天>0&&<div style={{textAlign:"right"}} translate="no">
             <div style={{fontSize:9,color:"#6a7a5a",letterSpacing:1}}>洞天</div>
             <div style={{fontSize:16,fontWeight:700,fontFamily:mono,color:jade}}>{S.洞天}</div>
+            <div style={{fontSize:8,color:"#4a6040"}}>产×{F(算洞天倍(S))} 液×{F(算洞天液倍(S))} +{算洞天液基(S).toFixed(1)}/s</div>
           </div>}
         </div>
       </div>
@@ -417,7 +544,7 @@ function App(){
 
     {/* 标签 */}
     <div style={{position:"relative",zIndex:10,maxWidth:920,margin:"0 auto",padding:"10px 24px 0",display:"flex",gap:4}}>
-      {["天地",...(S.突破>0?["内炼"]:[]),...(S.总灵气>=1e70||S.转世次数>0?["道果"]:[]),"统计",...(devMode?["开发"]:[])].map(t=><button key={t} onClick={()=>setTab(t)} style={{
+      {["天地",...(S.突破>0||S.洞天>0||S.转世次数>0?["内炼"]:[]),...(S.转世次数>0?["道果"]:[]),"统计",...(devMode?["开发"]:[])].map(t=><button key={t} onClick={()=>setTab(t)} style={{
         padding:"6px 16px",borderRadius:"6px 6px 0 0",border:"none",
         background:tab===t?"rgba(160,140,100,.12)":"transparent",
         color:tab===t?(t==="开发"?"#cc8844":gold):"#3a3025",fontSize:12,fontWeight:600,
@@ -499,7 +626,7 @@ function App(){
               </div>
             </div>})}
 
-          {S.已购道果.includes(3)&&<div style={{marginTop:4}}><button onClick={()=>setS(s=>({...s,自动购买:!s.自动购买}))} style={{padding:"4px 12px",borderRadius:4,border:`1px solid ${S.自动购买?jade+"66":"#2a2520"}`,background:S.自动购买?`${jade}15`:"rgba(15,12,10,.4)",color:S.自动购买?jade:"#4a4030",fontSize:10}}>自动购买: {S.自动购买?"开":"关"}</button></div>}
+          {S.转世次数>0&&<div style={{marginTop:4}}><button onClick={()=>setS(s=>({...s,自动购买:!s.自动购买}))} style={{padding:"4px 12px",borderRadius:4,border:`1px solid ${S.自动购买?jade+"66":"#2a2520"}`,background:S.自动购买?`${jade}15`:"rgba(15,12,10,.4)",color:S.自动购买?jade:"#4a4030",fontSize:10}}>自动购买: {S.自动购买?"开":"关"}</button></div>}
 
           {/* 突破 & 洞天 */}
           <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -510,13 +637,14 @@ function App(){
             </div>
             {S.已解锁>=8&&<div style={{flex:1,minWidth:240,padding:10,borderRadius:6,background:"rgba(120,160,100,.06)",border:`1px solid ${可洞?jade+"44":"rgba(40,60,35,.2)"}`}}>
               <div style={{fontSize:10,fontWeight:700,color:jade,marginBottom:3}}>开辟洞天 <span style={{fontWeight:400,color:"#4a5a40"}}>（{S.洞天}处）</span></div>
+              {S.洞天>0&&<div style={{fontSize:9,color:jade+"aa",marginBottom:3}}>产量 ×{F(算洞天倍(S))} · 灵液 ×{F(算洞天液倍(S))} · 基础 +{算洞天液基(S).toFixed(1)}/秒</div>}
               <div style={{fontSize:9,color:"#5a7050",marginBottom:4}}>需{gR.需}个玄宇宙 <span style={{color:可洞?"#8a8":"#3a4030"}}>[{F(S.天地数量[7])}/{gR.需}]</span></div>
               <button onClick={做洞天} disabled={!可洞} style={{padding:"5px 16px",borderRadius:4,border:"none",fontSize:10,fontWeight:600,background:可洞?`linear-gradient(135deg,${jade},#5a8040)`:"rgba(15,20,12,.4)",color:可洞?"#fff":"#3a3025"}}>开辟</button>
             </div>}
           </div>
 
           {/* 转世预览 */}
-          {(S.总灵气>=1e70||S.转世次数>0)&&<div style={{marginTop:10,padding:12,borderRadius:6,textAlign:"center",background:"linear-gradient(135deg,rgba(140,100,160,.08),rgba(80,60,100,.05))",border:`1px solid rgba(180,140,200,${道果pts>0?.25:.1})`,animation:道果pts>0?"glowJade 3s ease-in-out infinite":"none"}}>
+          {(S.总灵气>=1e78||S.转世次数>0)&&<div style={{marginTop:10,padding:12,borderRadius:6,textAlign:"center",background:"linear-gradient(135deg,rgba(140,100,160,.08),rgba(80,60,100,.05))",border:`1px solid rgba(180,140,200,${道果pts>0?.25:.1})`,animation:道果pts>0?"glowJade 3s ease-in-out infinite":"none"}}>
             <div style={{fontSize:9,color:"#7a6080",marginBottom:3}}>转世 — 破碎虚空，携道果重修</div>
             <div style={{fontSize:18,fontWeight:700,color:道果pts>0?"#c8a0d0":"#3a3025",fontFamily:mono,marginBottom:6}}>{道果pts>0?`可获 ${F(道果pts)} 道果`:"需累计 1.00e80 灵气"}</div>
             <button onClick={做转世} disabled={道果pts<=0} style={{padding:"7px 24px",borderRadius:5,border:"none",fontSize:12,fontWeight:700,letterSpacing:3,background:道果pts>0?"linear-gradient(135deg,#8060a0,#604080)":"rgba(25,20,30,.4)",color:道果pts>0?"#fff":"#3a3025"}}>⟡ 转 世 ⟡</button>
@@ -597,23 +725,72 @@ function App(){
 
         {/* ══ 道果页 ══ */}
         {tab==="道果"&&<div style={{animation:"slideIn .3s ease"}}>
-          <div style={{fontSize:14,fontWeight:700,color:"#c8a0d0",marginBottom:3}}>道果感悟</div>
-          <div style={{fontSize:10,color:"#6a5a70",marginBottom:12}}>道果 {F(S.道果)} · 已转世 {S.转世次数} 次</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:6}}>
-            {道果升级表.map(u=>{
-              const owned=S.已购道果.includes(u.id),can=!owned&&S.道果>=u.价;
-              return<button key={u.id} onClick={()=>购道果(u)} disabled={owned||!can} style={{padding:10,borderRadius:6,textAlign:"left",border:`1px solid ${owned?"rgba(100,180,140,.25)":can?"rgba(180,140,220,.3)":"rgba(40,35,50,.2)"}`,background:owned?"rgba(80,140,100,.06)":can?"rgba(100,70,140,.08)":"rgba(12,10,16,.3)"}}>
-                <div style={{fontSize:11,fontWeight:700,color:owned?"#8ac0a0":can?"#c8a0d0":"#3a3028"}}>{owned?"✓ ":""}{u.名}</div>
-                <div style={{fontSize:9,color:"#7a6a60",marginTop:2}}>{u.述}</div>
-                <div style={{fontSize:8,color:"#4a4035",marginTop:4}}>{owned?"已感悟":`需 ${u.价} 道果`}</div>
-              </button>})}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:"#c8a0d0"}}>道果天赋树</div>
+              <div style={{fontSize:10,color:"#6a5a70"}}>道果 {F(S.道果)} · 已转世 {S.转世次数} 次 · 已用 {(S.已购道果||[]).reduce((s,id)=>{const n=道果树.find(x=>x.id===id);return s+(n?n.价:0)},0)}</div>
+            </div>
+            <div style={{display:"flex",gap:4}}>
+              <button onClick={洗点} style={{padding:"3px 10px",borderRadius:3,border:"1px solid rgba(180,100,100,.3)",background:"rgba(80,30,30,.15)",color:"#cc8888",fontSize:9}}>洗点</button>
+              <button onClick={复制树} style={{padding:"3px 10px",borderRadius:3,border:"1px solid rgba(100,100,180,.3)",background:"rgba(30,30,80,.15)",color:"#8888cc",fontSize:9}}>复制</button>
+              <button onClick={粘贴树} style={{padding:"3px 10px",borderRadius:3,border:"1px solid rgba(100,180,100,.3)",background:"rgba(30,80,30,.15)",color:"#88cc88",fontSize:9}}>粘贴</button>
+            </div>
           </div>
-          <div style={{marginTop:14,padding:12,borderRadius:6,background:"rgba(60,40,80,.06)",border:"1px solid rgba(100,80,140,.12)"}}>
-            <div style={{fontSize:10,fontWeight:600,color:"#8a70a0",marginBottom:5}}>本轮修行</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:10}}>
+
+          {/* 树渲染 */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:0,padding:"8px 0"}}>
+            {Array.from({length:11},(_, 行)=>{
+              const 本行=道果树.filter(n=>n.行===行);
+              const 上行=行>0?道果树.filter(n=>n.行===行-1):[];
+              return<div key={行}>
+                {/* 连接线 */}
+                {行>0&&<div style={{display:"flex",justifyContent:"center",height:16,position:"relative"}}>
+                  {本行.length===1&&上行.length===1&&<div style={{width:1,height:"100%",background:"rgba(160,140,200,.2)"}}/>}
+                  {本行.length===1&&上行.length===2&&<div style={{width:120,height:"100%",position:"relative"}}>
+                    <div style={{position:"absolute",left:0,top:0,width:"50%",height:"50%",borderRight:"1px solid rgba(160,140,200,.2)",borderBottom:"1px solid rgba(160,140,200,.2)"}}/>
+                    <div style={{position:"absolute",right:0,top:0,width:"50%",height:"50%",borderLeft:"1px solid rgba(160,140,200,.2)",borderBottom:"1px solid rgba(160,140,200,.2)"}}/>
+                    <div style={{position:"absolute",left:"50%",top:"50%",width:1,height:"50%",background:"rgba(160,140,200,.2)"}}/>
+                  </div>}
+                  {本行.length===2&&上行.length===1&&<div style={{width:120,height:"100%",position:"relative"}}>
+                    <div style={{position:"absolute",left:"50%",top:0,width:1,height:"50%",background:"rgba(160,140,200,.2)"}}/>
+                    <div style={{position:"absolute",left:0,top:"50%",width:"50%",height:1,background:"rgba(160,140,200,.2)"}}/>
+                    <div style={{position:"absolute",right:0,top:"50%",width:"50%",height:1,background:"rgba(160,140,200,.2)"}}/>
+                    <div style={{position:"absolute",left:0,top:"50%",width:1,height:"50%",background:"rgba(160,140,200,.2)"}}/>
+                    <div style={{position:"absolute",right:0,top:"50%",width:1,height:"50%",background:"rgba(160,140,200,.2)"}}/>
+                  </div>}
+                  {本行.length===2&&上行.length===2&&<div style={{display:"flex",width:260,justifyContent:"space-between"}}>
+                    <div style={{width:1,height:"100%",background:"rgba(160,140,200,.2)"}}/>
+                    <div style={{width:1,height:"100%",background:"rgba(160,140,200,.2)"}}/>
+                  </div>}
+                </div>}
+                {/* 节点 */}
+                <div style={{display:"flex",gap:12,justifyContent:"center"}}>
+                  {本行.map(n=>{
+                    const owned=(S.已购道果||[]).includes(n.id);
+                    const can=可购树节点(n.id,S.已购道果||[])&&S.道果>=n.价;
+                    const locked=!owned&&!can;
+                    const 圆满=n.效==="圆满"&&owned;
+                    return<button key={n.id} onClick={()=>购树节点(n.id)} disabled={owned||!can}
+                      style={{width:125,padding:"6px 8px",borderRadius:6,textAlign:"center",
+                        border:`1px solid ${圆满?"rgba(200,180,100,.5)":owned?"rgba(120,200,140,.3)":can?"rgba(180,140,220,.4)":"rgba(80,70,100,.2)"}`,
+                        background:圆满?"rgba(200,180,100,.12)":owned?"rgba(80,150,100,.08)":can?"rgba(110,70,150,.1)":"rgba(30,25,40,.25)",
+                        boxShadow:圆满?"0 0 15px rgba(200,180,100,.2)":"none",
+                      }}>
+                      <div style={{fontSize:10,fontWeight:700,color:圆满?gold:owned?"#8ac0a0":can?"#c8a0d0":"#5a5060"}}>{owned?"✓ ":""}{n.名}</div>
+                      <div style={{fontSize:8,color:owned?"#6a8a70":can?"#7a6a80":"#454050",marginTop:2}}>{n.述}</div>
+                      <div style={{fontSize:7,color:owned?"#5a7a60":"#3a3540",marginTop:3}}>{owned?"已感悟":`${n.价} 道果`}</div>
+                    </button>})}
+                </div>
+              </div>})}
+          </div>
+
+          {/* 底部信息 */}
+          <div style={{marginTop:8,padding:10,borderRadius:6,background:"rgba(60,40,80,.06)",border:"1px solid rgba(100,80,140,.12)"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,fontSize:10}}>
               <div><span style={{color:"#5a4a60"}}>累计灵气</span><br/><span style={{color:"#c8c0b8",fontFamily:mono}}>{F(S.总灵气)}</span></div>
               <div><span style={{color:"#5a4a60"}}>转世门槛</span><br/><span style={{color:"#c8c0b8",fontFamily:mono}}>1.00e80</span></div>
               <div><span style={{color:"#5a4a60"}}>可获道果</span><br/><span style={{color:道果pts>0?"#c8a0d0":"#3a3028",fontFamily:mono,fontWeight:700}}>{F(道果pts)}</span></div>
+              <div><span style={{color:"#5a4a60"}}>全点满需</span><br/><span style={{color:"#c8c0b8",fontFamily:mono}}>46 道果</span></div>
             </div>
           </div>
         </div>}
@@ -621,7 +798,7 @@ function App(){
         {/* ══ 统计 ══ */}
         {tab==="统计"&&<div style={{animation:"slideIn .3s ease"}}>
           <div style={{fontSize:14,fontWeight:700,color:gold,marginBottom:12}}>修行录</div>
-          {[["当前灵气",F(S.灵气)],["每秒灵气",F(每秒)],["累计灵气",F(S.总灵气)],["已开天地",S.已解锁+"/8"],["突破",S.突破+"重"],["洞天",S.洞天+"处"],["灵液",F(S.灵液)],["灵液产速",灵液速>0?"+"+F(灵液速)+"/秒":"—"],["内炼",S.内炼中>=0?天地表[S.内炼中].名:"未开启"],["器物",(S.天地器物||[]).reduce((a,b)=>a+(b||[]).length,0)+"个"],["转世",S.转世次数+"次"],["道果",F(S.道果)],["开发者倍率","×"+F(S.开发者倍率||1)],["本轮",fT(S.本轮时间)],["总时间",fT(S.游戏时间)]].map(([k,v],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 12px",borderBottom:"1px solid rgba(160,140,100,.06)",fontSize:11}}><span style={{color:"#7a6a50"}}>{k}</span><span style={{color:"#c8c0b0",fontFamily:mono}}>{v}</span></div>)}
+          {[["当前灵气",F(S.灵气)],["每秒灵气",F(每秒)],["累计灵气",F(S.总灵气)],["已开天地",S.已解锁+"/8"],["突破",S.突破+"重"],["洞天",S.洞天+"处 · 产×"+F(算洞天倍(S))+" 液×"+F(算洞天液倍(S))],["灵液",F(S.灵液)],["灵液产速",灵液速>0?"+"+F(灵液速)+"/秒":"—"],["内炼",S.内炼中>=0?天地表[S.内炼中].名:"未开启"],["器物",(S.天地器物||[]).reduce((a,b)=>a+(b||[]).length,0)+"个"],["转世",S.转世次数+"次"],["道果",F(S.道果)],["开发者倍率","×"+F(S.开发者倍率||1)],["本轮",fT(S.本轮时间)],["总时间",fT(S.游戏时间)]].map(([k,v],i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 12px",borderBottom:"1px solid rgba(160,140,100,.06)",fontSize:11}}><span style={{color:"#7a6a50"}}>{k}</span><span style={{color:"#c8c0b0",fontFamily:mono}}>{v}</span></div>)}
           <div style={{marginTop:14,display:"flex",gap:6}}>
             <button onClick={()=>{保存(ref.current);addLog("💾 已存档")}} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2a2518",background:"rgba(20,18,12,.4)",color:"#7a6a50",fontSize:10}}>存档</button>
             <button onClick={重置} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2a1810",background:"rgba(30,15,10,.3)",color:"#8a5040",fontSize:10}}>删档</button>
@@ -646,7 +823,7 @@ function App(){
           <DevSec title="快速跳转">
             <DevBtn label="→ 初始" color="#888" onClick={()=>{setS(新建());addLog("🔧 重置")}}/>
             <DevBtn label="→ 首次突破前" color="#888" onClick={()=>{const s=新建();s.灵气=1e6;s.天地数量=[20,5,0,0,0,0,0,0];s.天地已购=[20,5,0,0,0,0,0,0];setS(s)}}/>
-            <DevBtn label="→ 首个洞天前" color="#888" onClick={()=>{const s=新建();s.灵气=1e24;s.已解锁=8;s.突破=6;s.天地数量=[100,80,60,40,30,20,10,50];s.天地已购=s.天地数量.map(x=>x);setS(s)}}/>
+            <DevBtn label="→ 首个洞天前" color="#888" onClick={()=>{const s=新建();s.灵气=1e24;s.已解锁=8;s.突破=6;s.天地数量=[100,80,60,40,30,20,10,75];s.天地已购=s.天地数量.map(x=>x);setS(s)}}/>
             <DevBtn label="→ 转世前" color="#888" onClick={()=>{const s=新建();s.灵气=1e80;s.总灵气=1e80;s.已解锁=8;s.突破=10;s.洞天=5;s.天地数量=Array(8).fill(200);s.天地已购=Array(8).fill(200);setS(s)}}/>
           </DevSec>
         </div>}
@@ -662,8 +839,19 @@ function App(){
       </div>
     </div>
 
+    {/* 弹窗 */}
+    {弹窗&&<div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(5,4,3,.85)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>设弹窗(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{maxWidth:360,padding:"24px 28px",borderRadius:8,background:"linear-gradient(135deg,#1a1612,#12100c)",border:"1px solid rgba(160,140,100,.2)",boxShadow:"0 8px 40px rgba(0,0,0,.6)"}}>
+        <div style={{fontSize:12,color:"#c8b890",lineHeight:1.6,marginBottom:20}}>{弹窗.文字}</div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button onClick={()=>设弹窗(null)} style={{padding:"6px 18px",borderRadius:4,border:"1px solid rgba(100,90,70,.3)",background:"rgba(30,25,18,.5)",color:"#7a6a50",fontSize:11,fontWeight:600}}>取消</button>
+          <button onClick={弹窗.确认} style={{padding:"6px 18px",borderRadius:4,border:"1px solid rgba(200,160,100,.3)",background:"linear-gradient(135deg,rgba(160,120,60,.2),rgba(120,90,40,.15))",color:"#c8a860",fontSize:11,fontWeight:600}}>确定</button>
+        </div>
+      </div>
+    </div>}
+
     <div style={{position:"relative",zIndex:10,textAlign:"center",padding:"12px 0 16px",fontSize:9,color:"#6a5a45",borderTop:"1px solid rgba(160,140,100,.1)"}}>
-      内景天地 v5 · © 2026 yyc-aka · MIT License · 受 Antimatter Dimensions 启发
+      内景天地 v6 · © 2026 yyc-aka · MIT License · 受 Antimatter Dimensions 启发
     </div>
   </div>;
 }
